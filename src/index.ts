@@ -2,9 +2,11 @@ import express from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
 import helmet from "helmet";
+import path from "path";
 import { config } from "./config";
 import { paymentService } from "./services/paymentService";
 import { RazorpayEvent } from "./types";
+import webIntegrationRoutes from "./routes/webIntegrationRoutes";
 
 // Initialize express application
 const app = express();
@@ -14,12 +16,15 @@ app.use(helmet());
 app.use(cors());
 app.use(bodyParser.json());
 
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Health check endpoint
 app.get("/health", (_, res) => {
   res.status(200).send({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Webhook endpoint for Razorpay
+// Webhook endpoint for Razorpay Payment Links (existing implementation)
 app.post("/webhook/razorpay", async (req, res): Promise<void> => {
   try {
     // Verify Razorpay webhook signature
@@ -44,12 +49,11 @@ app.post("/webhook/razorpay", async (req, res): Promise<void> => {
     }
 
     console.log(
-      `Received event: ${event.event} for payment ${
+      `[Payment Links] Received event: ${event.event} for payment ${
         event.payload?.payment?.entity?.id || "unknown"
       }`
     );
 
-    // Process payment event
     // Process payment event - only process captured events for maximum certainty
     if (event.event === "payment.captured") {
       await paymentService.processSuccessfulPayment(
@@ -57,22 +61,25 @@ app.post("/webhook/razorpay", async (req, res): Promise<void> => {
       );
     } else if (event.event === "payment.authorized") {
       console.log(
-        `Payment ${event.payload?.payment?.entity?.id} authorized but not yet captured. Waiting for capture event.`
+        `[Payment Links] Payment ${event.payload?.payment?.entity?.id} authorized but not yet captured. Waiting for capture event.`
       );
     } else {
-      console.log(`Skipping unhandled event type: ${event.event}`);
+      console.log(`[Payment Links] Skipping unhandled event type: ${event.event}`);
     }
 
     // Respond to Razorpay
     res.status(200).send({ status: "ok" });
   } catch (error) {
     console.error(
-      "Error processing webhook:",
+      "[Payment Links] Error processing webhook:",
       error instanceof Error ? error.message : "Unknown error"
     );
     res.status(500).send({ error: "Internal server error" });
   }
 });
+
+// Mount Web Integration routes
+app.use("/web-integration", webIntegrationRoutes);
 
 // Start the server
 app.listen(config.port, () => {
