@@ -12,6 +12,9 @@ interface WebhookPayload {
         order_id: string;
         amount: number;
         status: string;
+        notes?: {
+          [key: string]: string | undefined;
+        };
       };
     };
   };
@@ -26,40 +29,56 @@ interface OrderDetails {
   };
 }
 
-export class WebIntegrationService {
+export class RazorpayWebhookService {
   /**
    * Verify the authenticity of the webhook using Razorpay signature
    */
-  verifyWebhookSignature(payload: any, signature: string): boolean {
+  verifyWebhookSignature(req: any, signature: string): boolean {
+    if (!req.rawBody) {
+      console.error('Raw body not available for signature verification');
+      return false;
+    }
+    
     const hmac = crypto.createHmac("sha256", config.razorpayWebhookSecret);
-    const digest = hmac.update(JSON.stringify(payload)).digest("hex");
+    // Use raw body instead of JSON.stringify
+    const digest = hmac.update(req.rawBody).digest("hex");
+    
+    console.log("Received signature:", signature);
+    console.log("Calculated signature:", digest);
+    
     return digest === signature;
   }
 
   /**
-   * Process payment authorized event from web integration
+   * Process payment event from Razorpay
    */
-  async processAuthorizedPayment(payment: any): Promise<void> {
+  async processPayment(payment: any): Promise<void> {
     // Extract necessary information from the payment
-    const { id: paymentId, amount, status, order_id } = payment;
+    const { id: paymentId, amount, status, order_id, notes } = payment;
 
-    // Validate payment status
-    if (status !== "authorized") {
-      console.log(
-        `Web Integration Payment ${paymentId} not authorized. Status: ${status}`
-      );
+    // Validate payment status - accept both authorized and captured
+    if (status !== "authorized" && status !== "captured") {
+      console.log(`Payment ${paymentId} has invalid status: ${status}`);
       return;
     }
 
     try {
-      // Fetch order details to get customer ID
-      const orderDetails = await this.fetchOrderDetails(order_id);
-      const customerId = orderDetails.notes.customerId;
+      // First check if the notes directly contain customerId
+      let customerId = notes?.customerId;
+      
+      if (!customerId) {
+        console.log(`Fetching order details for ${order_id}`);
+        // Fetch order details to get customer ID
+        const orderDetails = await this.fetchOrderDetails(order_id);
+        customerId = orderDetails.notes.customerId;
+      }
 
       if (!customerId) {
         console.error(`No customer ID found in order ${order_id}`);
         return;
       }
+
+      console.log(`Processing payment ${paymentId} for customer ${customerId}`);
 
       // Convert amount from paise to rupees
       const amountInRupees = Math.floor(amount / 100);
@@ -72,7 +91,7 @@ export class WebIntegrationService {
         status
       );
     } catch (error) {
-      console.error("Error processing authorized payment:", error);
+      console.error("Error processing payment:", error);
       throw error;
     }
   }
@@ -82,6 +101,7 @@ export class WebIntegrationService {
    */
   private async fetchOrderDetails(orderId: string): Promise<OrderDetails> {
     try {
+      console.log(`Fetching order details from Razorpay API for: ${orderId}`);
       const response = await axios.get(
         `https://api.razorpay.com/v1/orders/${orderId}`,
         {
@@ -91,7 +111,8 @@ export class WebIntegrationService {
           },
         }
       );
-
+      
+      console.log(`Order details received:`, response.data);
       return response.data;
     } catch (error) {
       console.error(`Error fetching order details for ${orderId}:`, error);
@@ -121,7 +142,7 @@ export class WebIntegrationService {
       );
 
       if (paymentCheckResult.rows.length > 0) {
-        console.log(`Web Integration Payment ${paymentId} already processed`);
+        console.log(`Payment ${paymentId} already processed`);
         await client.query("COMMIT");
         return;
       }
@@ -157,34 +178,29 @@ export class WebIntegrationService {
         );
       }
 
-      // Record transaction - use double quotes for camelCase column names
+      // Record transaction - removed paymentSource column which was causing errors
       await client.query(
-        'INSERT INTO payment_transactions (id, "paymentId", "customerId", amount, status, "createdAt", "paymentSource") VALUES ($1, $2, $3, $4, $5, NOW(), $6)',
+        'INSERT INTO payment_transactions (id, "paymentId", "customerId", amount, status, "createdAt") VALUES ($1, $2, $3, $4, $5, NOW())',
         [
           crypto.randomUUID(),
           paymentId,
           customerId,
           amount,
-          status,
-          "web_integration",
+          status
         ]
       );
 
       await client.query("COMMIT");
-      console.log(
-        `[Web Integration] Updated wallet balance for customer ${customerId}. Added ${amount}`
-      );
+      console.log(`Updated wallet balance for customer ${customerId}. Added ${amount}`);
     } catch (err: any) {
       await client.query("ROLLBACK");
 
       if (err.code === "23505" && err.detail?.includes("paymentId")) {
-        console.log(
-          `[Web Integration] Payment ${paymentId} has already been processed. Ignoring duplicate webhook.`
-        );
+        console.log(`Payment ${paymentId} has already been processed. Ignoring duplicate webhook.`);
         return; // Exit gracefully without re-throwing
       }
 
-      console.error("[Web Integration] Error updating wallet:", err);
+      console.error("Error updating wallet:", err);
       throw err;
     } finally {
       client.release();
@@ -192,4 +208,4 @@ export class WebIntegrationService {
   }
 }
 
-export const webIntegrationService = new WebIntegrationService();
+export const razorpayWebhookService = new RazorpayWebhookService();
