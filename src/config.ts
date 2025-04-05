@@ -37,5 +37,5 @@ export const config: Config = {
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET!,
   razorpayKeyId: process.env.RAZORPAY_KEY_ID!,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET!,
-  backendApiUrl: process.env.BACKEND_API_URL!,
+  backendApiUrl: process.env.BACKEND_URL!,
 };
