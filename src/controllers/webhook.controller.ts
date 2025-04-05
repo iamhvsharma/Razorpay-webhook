@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { WebhookService } from "../services/webhookService";
+import { config } from "../config";
 
 export const razorpayWebhookHandler = async (
   req: Request,
@@ -77,7 +78,7 @@ export const razorpayWebhookHandler = async (
       };
 
       // Forward to your backend payment webhook handler
-      const backendApiUrl = `${process.env.BACKEND_URL || 'http://localhost:8000/api/v1/wallet/payment-webhook'}`;
+      const backendApiUrl = config.backendApiUrl;
       const success = await WebhookService.forwardPaymentToBackend(paymentData, backendApiUrl);
 
       if (success) {
