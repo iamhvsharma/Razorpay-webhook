@@ -65,6 +65,7 @@ export const razorpayWebhookHandler = async (
 
     // Handle different webhook events
     const event = req.body.event;
+    const paymentId = req.body.payload?.payment?.entity?.id || "unknown";
 
     if (!event) {
       res.status(400).json({
@@ -74,8 +75,16 @@ export const razorpayWebhookHandler = async (
       return;
     }
 
-    if (event === "payment.authorized" || event === "payment.captured") {
-      // Validate payment payload structure
+    // Log the event with payment ID
+    console.log(`Processing webhook event: ${event} for payment: ${paymentId}`);
+
+    // Only process certain events to avoid duplicates
+    // - payment.captured: final successful payment
+    // - payment.failed: handle failed payments
+    // Ignore other events like payment.authorized, order.paid, etc.
+
+    if (event === "payment.captured") {
+      // Only process payments that are captured (final state)
       const paymentEntity = req.body.payload?.payment?.entity;
       if (!paymentEntity) {
         console.error("Invalid payment payload structure");
@@ -123,7 +132,6 @@ export const razorpayWebhookHandler = async (
           });
         } else {
           // Always return 200 to Razorpay even if our backend processing failed
-          // This prevents Razorpay from retrying the webhook unnecessarily
           console.error("Failed to forward payment to backend");
           res.status(200).json({
             success: false,
@@ -138,11 +146,18 @@ export const razorpayWebhookHandler = async (
             "Webhook received, but backend processing failed with exception",
         });
       }
-    } else {
-      // For other events, just acknowledge receipt
+    } else if (event === "payment.failed") {
+      // Handle failed payments if needed
+      // ...
       res.status(200).json({
         success: true,
-        message: `Received webhook event: ${event}`,
+        message: `Failed payment event acknowledged: ${paymentId}`,
+      });
+    } else {
+      // For other events, just acknowledge receipt without processing
+      res.status(200).json({
+        success: true,
+        message: `Acknowledged webhook event: ${event} for payment: ${paymentId}`,
       });
     }
   } catch (error: any) {
