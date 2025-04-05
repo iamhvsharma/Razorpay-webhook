@@ -41,7 +41,7 @@ export class WebhookService {
 
       // Generate signature using the same algorithm your backend expects
       const signature = crypto
-        .createHmac("sha256", internalSecret)
+        .createHmac("sha256", internalSecret!)
         .update(JSON.stringify(paymentData))
         .digest("hex");
 
