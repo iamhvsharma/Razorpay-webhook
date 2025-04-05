@@ -1,18 +1,23 @@
-import express from 'express';
-import { config } from './config';
-import webhookRoutes from './routes/webhook.routes';
+import express from "express";
+import { config } from "./config";
+import webhookRoutes from "./routes/webhook.routes";
 
 // Initialize the Express app
 const app = express();
 
-// Create webhook service instance
-
-// Parse JSON bodies with raw body for signature verification
-app.use(express.json());
+// Parse JSON for regular routes, but not for webhook routes
+// (webhook routes handle their own body parsing to preserve raw body)
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/webhook")) {
+    express.json()(req, res, next);
+  } else {
+    next();
+  }
+});
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy' });
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "healthy" });
 });
 
 // Webhook endpoint

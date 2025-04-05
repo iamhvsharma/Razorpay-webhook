@@ -1,65 +1,74 @@
 import crypto from "crypto";
 import axios from "axios";
+import { PaymentData } from "../types/payment";
+import { config } from "../config";
 
 export class WebhookService {
   /**
    * Validates webhook signature from Razorpay
    */
   static verifyRazorpaySignature(
-    webhookBody: string,
+    webhookBody: Buffer,
     signature: string,
     webhookSecret: string
   ): boolean {
-    const expectedSignature = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(webhookBody)
-      .digest("hex");
+    try {
+      const expectedSignature = crypto
+        .createHmac("sha256", webhookSecret)
+        .update(webhookBody)
+        .digest("hex");
 
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature, "hex"),
-      Buffer.from(signature, "hex")
-    );
+      // Simple string comparison is vulnerable to timing attacks
+      // Use crypto.timingSafeEqual instead
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, "hex"),
+        Buffer.from(signature, "hex")
+      );
+    } catch (error) {
+      console.error("Error verifying webhook signature:", error);
+      return false;
+    }
   }
 
   /**
    * Forward verified payment data to your backend
    */
   static async forwardPaymentToBackend(
-    paymentData: any,
+    paymentData: PaymentData,
     apiUrl: string
   ): Promise<boolean> {
     try {
-      // Get the secret from environment variable or config
+      // Get the secret from config or environment variable
       const internalSecret =
-        process.env.INTERNAL_WEBHOOK_SECRET ||
-        process.env.RAZORPAY_WEBHOOK_SECRET;
+        config.internalWebhookSecret || config.razorpayWebhookSecret;
 
-      console.log(
-        "Using secret for internal signature:",
-        internalSecret ? "Secret exists" : "No secret"
-      );
+      if (!internalSecret) {
+        console.error(
+          "Missing internal webhook secret for backend communication"
+        );
+        return false;
+      }
 
       // Generate signature using the same algorithm your backend expects
       const signature = crypto
-        .createHmac("sha256", internalSecret!)
+        .createHmac("sha256", internalSecret)
         .update(JSON.stringify(paymentData))
         .digest("hex");
 
-      console.log("Generated internal signature:", signature);
-
-      // Forward to your backend API
+      // Forward to your backend API with timeout
       const response = await axios.post(apiUrl, paymentData, {
         headers: {
           "Content-Type": "application/json",
           "x-webhook-signature": signature,
         },
+        timeout: 5000, // 5 second timeout
       });
 
-      console.log("Backend response:", response.status, response.data);
-      return response.status === 200;
+      console.log("Backend response status:", response.status);
+      return response.status >= 200 && response.status < 300;
     } catch (error: any) {
-      console.error("Error forwarding payment data:", error);
-      if (error.response) {
+      console.error("Error forwarding payment data:", error.message);
+      if (axios.isAxiosError(error) && error.response) {
         console.error(
           "Backend response:",
           error.response.status,
