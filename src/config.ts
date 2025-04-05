@@ -21,10 +21,17 @@ const requiredEnvVars: Array<keyof Config> = [
   "backendApiUrl",
 ];
 
+// Special environment variable mappings
+const envVarMappings: Record<string, string> = {
+  backendApiUrl: "BACKEND_URL",
+};
+
 for (const envVar of requiredEnvVars) {
-  const key = envVar
-    .replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
-    .toUpperCase();
+  // Use mapping if available, otherwise transform to snake case
+  const key =
+    envVarMappings[envVar] ||
+    envVar.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`).toUpperCase();
+
   if (!process.env[key]) {
     throw new Error(`Environment variable ${key} is required`);
   }
