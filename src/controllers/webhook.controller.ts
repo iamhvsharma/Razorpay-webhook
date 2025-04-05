@@ -77,7 +77,7 @@ export const razorpayWebhookHandler = async (
       };
 
       // Forward to your backend payment webhook handler
-      const backendApiUrl = process.env.BACKEND_API_URL || 'http://localhost:8000/api/v1/wallet/payment-webhook';
+      const backendApiUrl = process.env.BACKEND_URL || 'http://localhost:8000/api/v1/wallet/payment-webhook';
       const success = await WebhookService.forwardPaymentToBackend(paymentData, backendApiUrl);
 
       if (success) {
