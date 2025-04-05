@@ -16,7 +16,7 @@ app.get('/health', (req, res) => {
 });
 
 // Webhook endpoint
-app.use("webhook", webhookRoutes);
+app.use("/webhook", webhookRoutes);
 
 // Start the server
 app.listen(config.port, () => {
