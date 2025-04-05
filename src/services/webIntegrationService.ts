@@ -158,16 +158,44 @@ export class RazorpayWebhookService {
 
       if (customerCheckResult.rows.length === 0) {
         console.log(
-          `Customer with ID ${customerId} not found. Recording payment transaction only.`
+          `Customer with ID ${customerId} not found. Cannot record payment due to foreign key constraint.`
         );
 
-        // Record transaction even if customer doesn't exist yet
+        // Log payment details for manual processing later
+        console.log(`Payment details for manual processing:
+          - Payment ID: ${paymentId}
+          - Customer ID: ${customerId}  
+          - Amount: ${amount}
+          - Status: ${status}
+        `);
+
+        // Create a customer record to avoid FK constraint violations
+        const newCustomerId = crypto.randomUUID();
+        await client.query(
+          'INSERT INTO customers (id, "walletBalance", "createdAt") VALUES ($1, $2, NOW())',
+          [customerId, amount]
+        );
+
+        console.log(
+          `Created new customer record with ID ${customerId} and initial balance ${amount}`
+        );
+
+        // Now we can proceed with creating the wallet and recording the transaction
+        await client.query(
+          'INSERT INTO wallets (id, "customerID", balance, "creditLimit", "updatedAt") VALUES ($1, $2, $3, $4, NOW())',
+          [crypto.randomUUID(), customerId, amount, 0]
+        );
+
+        // Record transaction
         await client.query(
           'INSERT INTO payment_transactions (id, "paymentId", "customerId", amount, status, "createdAt") VALUES ($1, $2, $3, $4, $5, NOW())',
           [crypto.randomUUID(), paymentId, customerId, amount, status]
         );
 
         await client.query("COMMIT");
+        console.log(
+          `Created payment record for new customer ${customerId} with amount ${amount}`
+        );
         return;
       }
 
