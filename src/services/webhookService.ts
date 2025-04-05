@@ -92,16 +92,17 @@ export class RazorpayWebhookService {
         status,
         eventType,
         notes,
-        timestamp: new Date().toISOString(),
       };
 
       console.log(
-        `Forwarding payment ${paymentId} for customer ${customerId} to backend`
+        `Processing payment: ID=${paymentId}, Customer=${customerId}, Amount=${
+          amount / 100
+        }, Status=${status}`
       );
 
-      // Forward to backend
+      // Use the exact URL from config without appending anything
       const response = await axios.post(
-        `${config.backendApiUrl}/api/wallet/payment-webhook`,
+        config.backendApiUrl, // Use this directly - don't append additional paths
         paymentData,
         {
           headers: {
@@ -115,10 +116,18 @@ export class RazorpayWebhookService {
       );
 
       console.log(
-        `Backend response: ${response.status} ${JSON.stringify(response.data)}`
+        `Backend response: Status=${response.status}, Success=${
+          response.data?.success || false
+        }`
       );
-    } catch (error) {
-      console.error("Error forwarding payment to backend:", error);
+    } catch (error: any) {
+      // Simplified error logging
+      console.error(`Payment forwarding error: ${error.message}`);
+      if (error.response) {
+        console.error(
+          `Status: ${error.response.status}, URL: ${error.config?.url}`
+        );
+      }
       throw error;
     }
   }
