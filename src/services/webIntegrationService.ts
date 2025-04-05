@@ -35,17 +35,17 @@ export class RazorpayWebhookService {
    */
   verifyWebhookSignature(req: any, signature: string): boolean {
     if (!req.rawBody) {
-      console.error('Raw body not available for signature verification');
+      console.error("Raw body not available for signature verification");
       return false;
     }
-    
+
     const hmac = crypto.createHmac("sha256", config.razorpayWebhookSecret);
     // Use raw body instead of JSON.stringify
     const digest = hmac.update(req.rawBody).digest("hex");
-    
+
     console.log("Received signature:", signature);
     console.log("Calculated signature:", digest);
-    
+
     return digest === signature;
   }
 
@@ -53,6 +53,9 @@ export class RazorpayWebhookService {
    * Process payment event from Razorpay
    */
   async processPayment(payment: any): Promise<void> {
+    // Log the entire payment object for debugging
+    console.log("Processing payment object:", JSON.stringify(payment, null, 2));
+
     // Extract necessary information from the payment
     const { id: paymentId, amount, status, order_id, notes } = payment;
 
@@ -65,7 +68,7 @@ export class RazorpayWebhookService {
     try {
       // First check if the notes directly contain customerId
       let customerId = notes?.customerId;
-      
+
       if (!customerId) {
         console.log(`Fetching order details for ${order_id}`);
         // Fetch order details to get customer ID
@@ -111,7 +114,7 @@ export class RazorpayWebhookService {
           },
         }
       );
-      
+
       console.log(`Order details received:`, response.data);
       return response.data;
     } catch (error) {
@@ -154,7 +157,18 @@ export class RazorpayWebhookService {
       );
 
       if (customerCheckResult.rows.length === 0) {
-        throw new Error(`Customer with ID ${customerId} not found`);
+        console.log(
+          `Customer with ID ${customerId} not found. Recording payment transaction only.`
+        );
+
+        // Record transaction even if customer doesn't exist yet
+        await client.query(
+          'INSERT INTO payment_transactions (id, "paymentId", "customerId", amount, status, "createdAt") VALUES ($1, $2, $3, $4, $5, NOW())',
+          [crypto.randomUUID(), paymentId, customerId, amount, status]
+        );
+
+        await client.query("COMMIT");
+        return;
       }
 
       // Update wallet balance in both Customer and Wallet tables
@@ -181,22 +195,20 @@ export class RazorpayWebhookService {
       // Record transaction - removed paymentSource column which was causing errors
       await client.query(
         'INSERT INTO payment_transactions (id, "paymentId", "customerId", amount, status, "createdAt") VALUES ($1, $2, $3, $4, $5, NOW())',
-        [
-          crypto.randomUUID(),
-          paymentId,
-          customerId,
-          amount,
-          status
-        ]
+        [crypto.randomUUID(), paymentId, customerId, amount, status]
       );
 
       await client.query("COMMIT");
-      console.log(`Updated wallet balance for customer ${customerId}. Added ${amount}`);
+      console.log(
+        `Updated wallet balance for customer ${customerId}. Added ${amount}`
+      );
     } catch (err: any) {
       await client.query("ROLLBACK");
 
       if (err.code === "23505" && err.detail?.includes("paymentId")) {
-        console.log(`Payment ${paymentId} has already been processed. Ignoring duplicate webhook.`);
+        console.log(
+          `Payment ${paymentId} has already been processed. Ignoring duplicate webhook.`
+        );
         return; // Exit gracefully without re-throwing
       }
 
