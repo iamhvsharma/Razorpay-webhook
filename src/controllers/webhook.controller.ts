@@ -58,14 +58,13 @@ export const razorpayWebhookHandler = async (
     }
 
     // Log the incoming webhook for debugging
-    console.log("Received verified Razorpay webhook:", {
-      event: req.body.event,
-      paymentId: req.body.payload?.payment?.entity?.id || "unknown",
-    });
-
-    // Handle different webhook events
     const event = req.body.event;
     const paymentId = req.body.payload?.payment?.entity?.id || "unknown";
+
+    console.log("Received verified Razorpay webhook:", {
+      event: event,
+      paymentId: paymentId,
+    });
 
     if (!event) {
       res.status(400).json({
@@ -75,16 +74,8 @@ export const razorpayWebhookHandler = async (
       return;
     }
 
-    // Log the event with payment ID
-    console.log(`Processing webhook event: ${event} for payment: ${paymentId}`);
-
-    // Only process certain events to avoid duplicates
-    // - payment.captured: final successful payment
-    // - payment.failed: handle failed payments
-    // Ignore other events like payment.authorized, order.paid, etc.
-
+    // Only process payment.captured events (final successful state)
     if (event === "payment.captured") {
-      // Only process payments that are captured (final state)
       const paymentEntity = req.body.payload?.payment?.entity;
       if (!paymentEntity) {
         console.error("Invalid payment payload structure");
@@ -105,7 +96,7 @@ export const razorpayWebhookHandler = async (
       // Prepare payment data for your backend
       const paymentData: PaymentData = {
         paymentId: paymentEntity.id,
-        orderId: paymentEntity.order_id,
+        orderId: paymentEntity.order_id || "",
         customerId: customerId || "unknown",
         amount: Math.floor(paymentEntity.amount / 100), // Convert from paise to rupees
         status: "successful",
@@ -114,6 +105,8 @@ export const razorpayWebhookHandler = async (
         metadata: {
           currency: paymentEntity.currency,
           method: paymentEntity.method,
+          razorpaySignature: req.headers["x-razorpay-signature"] as string,
+          rawEvent: event,
         },
       };
 
@@ -131,7 +124,7 @@ export const razorpayWebhookHandler = async (
             message: "Payment verification forwarded to backend",
           });
         } else {
-          // Always return 200 to Razorpay even if our backend processing failed
+          // Always return 200 to Razorpay even if backend processing failed
           console.error("Failed to forward payment to backend");
           res.status(200).json({
             success: false,
@@ -146,15 +139,8 @@ export const razorpayWebhookHandler = async (
             "Webhook received, but backend processing failed with exception",
         });
       }
-    } else if (event === "payment.failed") {
-      // Handle failed payments if needed
-      // ...
-      res.status(200).json({
-        success: true,
-        message: `Failed payment event acknowledged: ${paymentId}`,
-      });
     } else {
-      // For other events, just acknowledge receipt without processing
+      // For other events (payment.authorized, order.paid), just acknowledge without processing
       res.status(200).json({
         success: true,
         message: `Acknowledged webhook event: ${event} for payment: ${paymentId}`,
@@ -162,8 +148,6 @@ export const razorpayWebhookHandler = async (
     }
   } catch (error: any) {
     console.error("Error processing webhook:", error);
-    // Always return 200 to Razorpay even if we have processing errors
-    // This prevents unnecessary retries for errors we can't fix
     res.status(200).json({
       success: false,
       message: "Webhook received but processing failed",
