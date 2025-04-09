@@ -135,7 +135,6 @@ export const razorpayWebhookHandler = async (
             message: "Payment verification forwarded to backend",
           });
         } else {
-          // Always return 200 to Razorpay even if backend processing failed
           console.error("Failed to forward payment to backend");
           res.status(200).json({
             success: false,
