@@ -38,6 +38,8 @@ export class WebhookService {
     apiUrl: string
   ): Promise<boolean> {
     try {
+      console.log(`Attempting to forward payment to backend: ${apiUrl}`, paymentData);
+      
       // Get the secret from config or environment variable
       const internalSecret =
         config.internalWebhookSecret || config.razorpayWebhookSecret;
@@ -55,7 +57,10 @@ export class WebhookService {
         .update(JSON.stringify(paymentData))
         .digest("hex");
 
+      console.log(`Generated signature for backend: ${signature.substring(0, 10)}...`);
+
       // Forward to your backend API with timeout
+      console.log(`Sending POST request to: ${apiUrl}`);
       const response = await axios.post(apiUrl, paymentData, {
         headers: {
           "Content-Type": "application/json",
@@ -64,7 +69,7 @@ export class WebhookService {
         timeout: 5000, // 5 second timeout
       });
 
-      console.log("Backend response status:", response.status);
+      console.log(`Backend response status: ${response.status}, data:`, response.data);
       return response.status >= 200 && response.status < 300;
     } catch (error: any) {
       console.error("Error forwarding payment data:", error.message);
@@ -74,6 +79,8 @@ export class WebhookService {
           error.response.status,
           error.response.data
         );
+      } else if (axios.isAxiosError(error) && error.request) {
+        console.error("No response received from backend");
       }
       return false;
     }

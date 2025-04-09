@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { WebhookService } from "../services/webhookService";
 import { config } from "../config";
 import { PaymentData } from "../types/payment";
+import { EventTrackingService } from "../services/eventTrackingService";
 
 // Extend Express Request type to include rawBody
 declare global {
@@ -17,6 +18,12 @@ export const razorpayWebhookHandler = async (
   res: Response
 ): Promise<void> => {
   try {
+    console.log("Received webhook from Razorpay:", {
+      headers: req.headers,
+      eventType: req.body?.event,
+      paymentId: req.body?.payload?.payment?.entity?.id || "unknown",
+    });
+
     // Get the Razorpay signature from headers
     const razorpaySignature = req.headers["x-razorpay-signature"];
 
@@ -71,6 +78,18 @@ export const razorpayWebhookHandler = async (
       res.status(400).json({
         success: false,
         message: "Missing event type in webhook payload",
+      });
+      return;
+    }
+
+    // Check if this event was already processed
+    if (EventTrackingService.isEventProcessed(paymentId, event)) {
+      console.log(
+        `Event ${event} for payment ${paymentId} already processed, skipping`
+      );
+      res.status(200).json({
+        success: true,
+        message: "Event already processed",
       });
       return;
     }
@@ -146,6 +165,15 @@ export const razorpayWebhookHandler = async (
             "Webhook received, but backend processing failed with exception",
         });
       }
+
+      // Track this event
+      EventTrackingService.markEventProcessed({
+        id: `${paymentId}-${event}-${Date.now()}`,
+        paymentId,
+        eventType: event,
+        timestamp: new Date().toISOString(),
+        processed: true,
+      });
     } else if (event === "payment.failed") {
       // Handle failed payments if needed
       // ...
