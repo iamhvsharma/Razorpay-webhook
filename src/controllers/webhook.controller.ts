@@ -86,18 +86,29 @@ export const razorpayWebhookHandler = async (
         return;
       }
 
-      // Extract payment details
+      // Extract payment details and log the entire payment entity for debugging
+      console.log("Payment entity:", JSON.stringify(paymentEntity, null, 2));
+
+      // Look for customerId in notes or try to find it in the description
       const customerId = paymentEntity.notes?.customerId;
 
       if (!customerId) {
         console.warn("Customer ID not found in payment notes");
+
+        // Since backend rejects "unknown" customerId, we should stop processing
+        res.status(200).json({
+          success: false,
+          message:
+            "Cannot process payment: missing customer ID in payment notes",
+        });
+        return;
       }
 
       // Prepare payment data for your backend
       const paymentData: PaymentData = {
         paymentId: paymentEntity.id,
         orderId: paymentEntity.order_id || "",
-        customerId: customerId || "unknown",
+        customerId: customerId, // Only proceed with a valid customerId
         amount: Math.floor(paymentEntity.amount / 100), // Convert from paise to rupees
         status: "successful",
         eventType: event,

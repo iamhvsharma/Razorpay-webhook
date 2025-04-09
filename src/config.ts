@@ -46,6 +46,10 @@ export const config: Config = {
   internalWebhookSecret: process.env.INTERNAL_WEBHOOK_SECRET,
 };
 
+// Add this to your config.ts
+export const INTERNAL_WEBHOOK_SECRET =
+  process.env.INTERNAL_WEBHOOK_SECRET || "your-internal-secret";
+
 // Validate URL format for backend API
 try {
   new URL(config.backendApiUrl);

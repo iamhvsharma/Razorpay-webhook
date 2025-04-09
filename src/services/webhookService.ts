@@ -39,11 +39,13 @@ export class WebhookService {
   ): Promise<boolean> {
     try {
       // Get the secret from config
-      const internalSecret = config.internalWebhookSecret || 
-                             config.razorpayWebhookSecret;
+      const internalSecret =
+        config.internalWebhookSecret || config.razorpayWebhookSecret;
 
       if (!internalSecret) {
-        console.error("Missing internal webhook secret for backend communication");
+        console.error(
+          "Missing internal webhook secret for backend communication"
+        );
         return false;
       }
 
@@ -53,29 +55,38 @@ export class WebhookService {
         .update(JSON.stringify(paymentData))
         .digest("hex");
 
+      // Log what we're sending
+      console.log(
+        `Forwarding payment ${paymentData.paymentId} to backend at ${apiUrl}`
+      );
+      console.log(`Payment data: ${JSON.stringify(paymentData, null, 2)}`);
+
       // Forward to your backend API with timeout
-      console.log(`Forwarding payment ${paymentData.paymentId} to backend at ${apiUrl}`);
-      console.log(`Payment data:`, JSON.stringify(paymentData, null, 2));
-      
       const response = await axios.post(apiUrl, paymentData, {
         headers: {
           "Content-Type": "application/json",
           "x-webhook-signature": signature,
         },
-        timeout: 5000 // 5 second timeout
+        timeout: 10000, // 10 second timeout
       });
 
-      console.log(`Backend response for payment ${paymentData.paymentId}:`, 
-        response.status, JSON.stringify(response.data, null, 2));
-      
+      console.log(
+        `Backend response for payment ${paymentData.paymentId}:`,
+        response.status,
+        response.data
+      );
+
       return response.status >= 200 && response.status < 300;
     } catch (error: any) {
-      console.error(`Error forwarding payment ${paymentData.paymentId}:`, error.message);
+      console.error(
+        `Error forwarding payment ${paymentData.paymentId}:`,
+        error.message
+      );
       if (axios.isAxiosError(error) && error.response) {
         console.error(
           "Backend response:",
           error.response.status,
-          JSON.stringify(error.response.data, null, 2)
+          error.response.data
         );
       }
       return false;
