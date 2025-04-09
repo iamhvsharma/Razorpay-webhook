@@ -7,7 +7,7 @@ export interface PaymentData {
   orderId: string;
   customerId: string;
   amount: number;
-  status: "successful" | "failed" | "pending";
+  status: string;
   eventType: string;
   timestamp: string;
   metadata?: Record<string, any>;

@@ -38,14 +38,12 @@ export class WebhookService {
     apiUrl: string
   ): Promise<boolean> {
     try {
-      // Get the secret from config or environment variable
-      const internalSecret =
-        config.internalWebhookSecret || config.razorpayWebhookSecret;
+      // Get the secret from config
+      const internalSecret = config.internalWebhookSecret || 
+                             config.razorpayWebhookSecret;
 
       if (!internalSecret) {
-        console.error(
-          "Missing internal webhook secret for backend communication"
-        );
+        console.error("Missing internal webhook secret for backend communication");
         return false;
       }
 
@@ -56,23 +54,28 @@ export class WebhookService {
         .digest("hex");
 
       // Forward to your backend API with timeout
+      console.log(`Forwarding payment ${paymentData.paymentId} to backend at ${apiUrl}`);
+      console.log(`Payment data:`, JSON.stringify(paymentData, null, 2));
+      
       const response = await axios.post(apiUrl, paymentData, {
         headers: {
           "Content-Type": "application/json",
           "x-webhook-signature": signature,
         },
-        timeout: 5000, // 5 second timeout
+        timeout: 5000 // 5 second timeout
       });
 
-      console.log("Backend response status:", response.status);
+      console.log(`Backend response for payment ${paymentData.paymentId}:`, 
+        response.status, JSON.stringify(response.data, null, 2));
+      
       return response.status >= 200 && response.status < 300;
     } catch (error: any) {
-      console.error("Error forwarding payment data:", error.message);
+      console.error(`Error forwarding payment ${paymentData.paymentId}:`, error.message);
       if (axios.isAxiosError(error) && error.response) {
         console.error(
           "Backend response:",
           error.response.status,
-          error.response.data
+          JSON.stringify(error.response.data, null, 2)
         );
       }
       return false;
